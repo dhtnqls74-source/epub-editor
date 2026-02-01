@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Web EPUB Editor</title>
+
+<link rel="stylesheet" href="lib/codemirror.css" />
+<link rel="stylesheet" href="css/editor.css" />
+
+<script src="lib/jszip.min.js"></script>
+<script src="lib/codemirror.js"></script>
+<script src="lib/xml.js"></script>
+</head>
+
+<body>
+
+<header>
+  <span>📘 Web EPUB Editor</span>
+  <input type="file" accept=".epub" id="fileInput" />
+  <button id="saveBtn">💾 저장</button>
+</header>
+
+<div id="container">
+  <!-- 왼쪽 -->
+  <aside id="tree">
+    <div id="metaPanel">
+      <h3>메타데이터</h3>
+      <input id="metaTitle" placeholder="제목" />
+      <input id="metaCreator" placeholder="제작자" />
+      <input id="metaLang" placeholder="언어 (ko)" />
+      <input id="metaUUID" placeholder="UUID" />
+      <button id="applyMeta">적용</button>
+
+      <hr />
+      <h3>표지</h3>
+      <input type="file" accept="image/*" id="coverInput" />
+    </div>
+  </aside>
+
+  <!-- 가운데 -->
+  <main>
+    <textarea id="editor"></textarea>
+  </main>
+
+  <!-- 오른쪽 -->
+  <aside id="preview">
+    <iframe id="iframe"></iframe>
+  </aside>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
