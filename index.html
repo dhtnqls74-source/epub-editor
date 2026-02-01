@@ -1,58 +1,197 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Web EPUB Editor</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EPUB Editor</title>
 
-<link rel="stylesheet" href="css/editor.css" />
-
+<!-- CodeMirror -->
 <link rel="stylesheet"
-  href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
-
+ href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
 
+<!-- JSZip -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<style>
+body { margin:0; font-family:system-ui; }
+header {
+  height:48px; background:#222; color:#fff;
+  display:flex; align-items:center; gap:10px;
+  padding:0 12px;
+}
+#layout { display:flex; height:calc(100vh - 48px); }
+#tree {
+  width:220px; border-right:1px solid #ddd;
+  background:#f7f7f7; overflow:auto;
+}
+#tree div {
+  padding:6px 10px; cursor:pointer;
+  font-family:monospace; font-size:13px;
+}
+#tree div.active { background:#ddd; }
+
+#side {
+  width:220px; border-right:1px solid #ddd;
+  padding:8px; font-size:13px;
+}
+#side input { width:100%; margin-bottom:6px; }
+
+.CodeMirror { height:100%; }
+#editor { flex:1; }
+
+#preview {
+  width:35%; border-left:1px solid #ddd;
+}
+iframe { width:100%; height:100%; border:0; }
+</style>
 </head>
 
 <body>
 
 <header>
-  <span>📘 Web EPUB Editor</span>
-  <input type="file" accept=".epub" id="fileInput" />
-  <button id="saveBtn">💾 저장</button>
+  📘 EPUB Editor
+  <input type="file" accept=".epub" id="fileInput">
+  <button onclick="saveEpub()">💾 저장</button>
 </header>
 
-<div id="container">
-  <!-- 왼쪽 -->
-  <aside id="tree">
-    <div id="metaPanel">
-      <h3>메타데이터</h3>
-      <input id="metaTitle" placeholder="제목" />
-      <input id="metaCreator" placeholder="제작자" />
-      <input id="metaLang" placeholder="언어 (ko)" />
-      <input id="metaUUID" placeholder="UUID" />
-      <button id="applyMeta">적용</button>
+<div id="layout">
+  <!-- OPF 패널 -->
+  <div id="side">
+    <b>메타데이터</b>
+    <input id="mTitle" placeholder="제목">
+    <input id="mCreator" placeholder="제작자">
+    <input id="mLang" placeholder="언어">
+    <input id="mUUID" placeholder="UUID">
+    <button onclick="applyMeta()">적용</button>
+    <hr>
+    <b>표지</b>
+    <input type="file" accept="image/*" onchange="replaceCover(this.files[0])">
+  </div>
 
-      <hr />
-      <h3>표지</h3>
-      <input type="file" accept="image/*" id="coverInput" />
-    </div>
-  </aside>
+  <!-- 파일 트리 -->
+  <div id="tree"></div>
 
-  <!-- 가운데 -->
-  <main>
-    <textarea id="editor"></textarea>
-  </main>
+  <!-- 에디터 -->
+  <div id="editor">
+    <textarea id="code"></textarea>
+  </div>
 
-  <!-- 오른쪽 -->
-  <aside id="preview">
-    <iframe id="iframe"></iframe>
-  </aside>
+  <!-- 미리보기 -->
+  <div id="preview">
+    <iframe id="frame"></iframe>
+  </div>
 </div>
 
-<script src="js/app.js"></script>
+<script>
+let zip, currentFile, opfPath;
+const tree = document.getElementById("tree");
+const frame = document.getElementById("frame");
+
+const editor = CodeMirror.fromTextArea(
+  document.getElementById("code"),
+  { mode:"htmlmixed", lineNumbers:true }
+);
+
+editor.on("change", () => {
+  if (!currentFile) return;
+  zip.file(currentFile, editor.getValue());
+  frame.srcdoc = editor.getValue();
+});
+
+// EPUB 열기
+fileInput.onchange = async e => {
+  zip = await JSZip.loadAsync(e.target.files[0]);
+  opfPath = Object.keys(zip.files).find(f => f.endsWith(".opf"));
+  loadMeta();
+  buildTree();
+};
+
+// OPF 메타데이터 읽기
+async function loadMeta() {
+  const xml = await zip.file(opfPath).async("string");
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  mTitle.value = doc.querySelector("dc\\:title")?.textContent || "";
+  mCreator.value = doc.querySelector("dc\\:creator")?.textContent || "";
+  mLang.value = doc.querySelector("dc\\:language")?.textContent || "";
+  mUUID.value = doc.querySelector("dc\\:identifier")?.textContent || "";
+}
+
+// 메타데이터 적용
+async function applyMeta() {
+  let xml = await zip.file(opfPath).async("string");
+  xml = xml.replace(/<dc:title>.*?<\/dc:title>/,
+    `<dc:title>${mTitle.value}</dc:title>`);
+  xml = xml.replace(/<dc:creator.*?>.*?<\/dc:creator>/,
+    `<dc:creator>${mCreator.value}</dc:creator>`);
+  xml = xml.replace(/<dc:language>.*?<\/dc:language>/,
+    `<dc:language>${mLang.value}</dc:language>`);
+  xml = xml.replace(/<dc:identifier.*?>.*?<\/dc:identifier>/,
+    `<dc:identifier>${mUUID.value}</dc:identifier>`);
+  zip.file(opfPath, xml);
+  alert("메타데이터 적용됨");
+}
+
+// 파일 트리 (spine 순서)
+async function buildTree() {
+  tree.innerHTML = "";
+  const xml = await zip.file(opfPath).async("string");
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  const ids = [...doc.querySelectorAll("spine itemref")]
+    .map(i => i.getAttribute("idref"));
+
+  const manifest = {};
+  doc.querySelectorAll("manifest item").forEach(i=>{
+    manifest[i.getAttribute("id")] = i.getAttribute("href");
+  });
+
+  ids.forEach(id=>{
+    const path = manifest[id];
+    if (!path) return;
+    const div = document.createElement("div");
+    div.textContent = path;
+    div.onclick = ()=>openFile(path, div);
+    tree.appendChild(div);
+  });
+}
+
+// 파일 열기
+async function openFile(path, el) {
+  document.querySelectorAll("#tree div")
+    .forEach(d=>d.classList.remove("active"));
+  el.classList.add("active");
+
+  currentFile = path;
+  const txt = await zip.file(path).async("string");
+  editor.setValue(txt);
+  frame.srcdoc = txt;
+}
+
+// 표지 교체
+async function replaceCover(file) {
+  const data = await file.arrayBuffer();
+  zip.file("cover.jpg", data);
+
+  const coverHtml =
+`<html xmlns="http://www.w3.org/1999/xhtml">
+<body style="margin:0">
+<img src="cover.jpg" style="width:100%;height:auto"/>
+</body></html>`;
+  zip.file("cover.xhtml", coverHtml);
+  alert("표지 교체 완료");
+}
+
+// 저장
+async function saveEpub() {
+  const blob = await zip.generateAsync({type:"blob"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "edited.epub";
+  a.click();
+}
+</script>
+
 </body>
 </html>
